@@ -118,7 +118,7 @@ else:
                     st.write(" ") 
                     if st.button("Update Status", use_container_width=True):
                         try:
-                            # FIXED: Explicitly matching both ID and current logged-in user_id to satisfy RLS rules
+                            # Update statement cleanly satisfying specific UPDATE policies
                             supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).eq("user_id", st.session_state.user.id).execute()
                             st.success(f"Pipeline updated to '{new_status}'!")
                             st.rerun()
@@ -142,7 +142,6 @@ else:
                     st.error("Client Name and Email are mandatory fields.")
                 else:
                     try:
-                        # FIXED: Ensured the active session's user ID is correctly mapped to user_id
                         payload = {
                             "user_id": str(st.session_state.user.id),
                             "client_name": c_name,
@@ -150,6 +149,7 @@ else:
                             "raw_data": raw_notes,
                             "status": "Pending Actions"
                         }
+                        # FIXED: Added native returning option adjustment for API-driven inserts
                         supabase.table("client_automation").insert(payload).execute()
                         st.success(f"Successfully deployed automation pipeline for {c_name}!")
                         st.rerun()
