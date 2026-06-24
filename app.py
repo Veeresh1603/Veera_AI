@@ -33,7 +33,7 @@ if supabase is None:
     st.error("🚨 Critical Error: Could not connect to the database. Please verify your Streamlit Secrets.")
     st.stop()
 
-# Track user, session, and token variables robustly
+# Persistent state management for authentication session tracking
 if "user" not in st.session_state:
     st.session_state.user = None
 if "access_token" not in st.session_state:
@@ -54,7 +54,6 @@ if not st.session_state.user:
         if st.button("Access Dashboard"):
             try:
                 res = supabase.auth.sign_in_with_password({"email": login_email, "password": login_password})
-                # FIXED: Securely capture both user profile data and the active session token
                 st.session_state.user = res.user
                 st.session_state.access_token = res.session.access_token
                 st.success("Authentication successful!")
@@ -91,7 +90,6 @@ else:
     with tab_view:
         st.subheader("Active Pipelines")
         try:
-            # Safely bind token if present
             if st.session_state.access_token:
                 supabase.postgrest.auth(st.session_state.access_token)
                 
@@ -131,7 +129,7 @@ else:
                             if st.session_state.access_token:
                                 supabase.postgrest.auth(st.session_state.access_token)
                                 
-                            supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).eq("user_id", st.session_state.user.id).execute()
+                            supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).execute()
                             st.success(f"Pipeline updated to '{new_status}'!")
                             st.rerun()
                         except Exception as e:
@@ -154,17 +152,14 @@ else:
                     st.error("Client Name and Email are mandatory fields.")
                 else:
                     try:
-                        active_uid = str(st.session_state.user.id)
-                        
                         payload = {
-                            "user_id": active_uid,
+                            "user_id": str(st.session_state.user.id),
                             "client_name": c_name,
                             "client_email": c_email,
                             "raw_data": raw_notes,
                             "status": "Pending Actions"
                         }
                         
-                        # FIXED: Binds the correctly stored session token from local storage state
                         if st.session_state.access_token:
                             supabase.postgrest.auth(st.session_state.access_token)
                         
