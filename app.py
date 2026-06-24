@@ -22,7 +22,6 @@ def init_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
-        # Standard native initialization for supabase v2.x
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
         st.error(f"Internal Connection Error: {str(e)}")
@@ -30,12 +29,10 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Check if database is connected globally
 if supabase is None:
     st.error("🚨 Critical Error: Could not connect to the database. Please verify your Streamlit Secrets.")
     st.stop()
 
-# Initialize local persistent UI states
 if "user" not in st.session_state:
     st.session_state.user = None
 
@@ -63,9 +60,6 @@ if not st.session_state.user:
     with auth_tab2:
         reg_email = st.text_input("Email Address", key="reg_em")
         reg_password = st.text_input("Secure Password", type="password", key="reg_pwd")
-        if f"submit_reg" not in st.session_state:
-            st.session_state.submit_reg = False
-            
         if st.button("Create Free Account"):
             try:
                 res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
@@ -97,14 +91,40 @@ else:
             if len(data) == 0:
                 st.info("No active automations found. Head over to the trigger tab to start one!")
             else:
+                # 1. Render the main Data Table cleanly
                 df = pd.DataFrame(data)
-                df = df.rename(columns={
+                df_visual = df.rename(columns={
                     "client_name": "Client Name",
                     "client_email": "Client Email",
                     "status": "Pipeline Status",
                     "created_at": "Triggered At"
                 })
-                st.dataframe(df[["id", "Client Name", "Client Email", "Pipeline Status", "Triggered At"]], use_container_width=True)
+                st.dataframe(df_visual[["id", "Client Name", "Client Email", "Pipeline Status", "Triggered At"]], use_container_width=True)
+                
+                # 2. NEW: Interactive Status Update Panel
+                st.markdown("---")
+                st.subheader("🔧 Update Pipeline State")
+                
+                col1, col2, col3 = st.columns([2, 2, 1])
+                
+                with col1:
+                    # Create a dictionary mapping client names to their unique pipeline IDs
+                    client_options = {f"{row['client_name']} ({row['client_email']})": row['id'] for row in data}
+                    selected_client_label = st.selectbox("Select Target Pipeline", options=list(client_options.keys()))
+                    target_id = client_options[selected_client_label]
+                    
+                with col2:
+                    new_status = st.selectbox("Assign New Status", options=["Pending Actions", "In Progress", "Completed", "Failed"])
+                    
+                with col3:
+                    st.write(" ") # Padding for visual spacing
+                    st.write(" ") 
+                    if st.button("Update Status", use_container_width=True):
+                        # Run an update query on the database row matching our target ID
+                        supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).execute()
+                        st.success(f"Pipeline updated to '{new_status}'!")
+                        st.rerun()
+                        
         except Exception as e:
             st.error(f"Failed to fetch real-time pipelines: {str(e)}")
 
@@ -115,7 +135,6 @@ else:
             c_email = st.text_input("Client Contact Email")
             raw_notes = st.text_area("Automation Scope / Raw Metadata")
             
-            # FIXED: Changed from form_submit_with_button to form_submit_button
             submit_btn = st.form_submit_button("Inject into Pipeline")
             
             if submit_btn:
