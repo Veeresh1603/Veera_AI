@@ -33,8 +33,11 @@ if supabase is None:
     st.error("🚨 Critical Error: Could not connect to the database. Please verify your Streamlit Secrets.")
     st.stop()
 
+# Track user, session, and token variables robustly
 if "user" not in st.session_state:
     st.session_state.user = None
+if "access_token" not in st.session_state:
+    st.session_state.access_token = None
 
 # =====================================================================
 # INTERFACE ROUTING: AUTHENTICATION GATEWAY
@@ -51,7 +54,9 @@ if not st.session_state.user:
         if st.button("Access Dashboard"):
             try:
                 res = supabase.auth.sign_in_with_password({"email": login_email, "password": login_password})
+                # FIXED: Securely capture both user profile data and the active session token
                 st.session_state.user = res.user
+                st.session_state.access_token = res.session.access_token
                 st.success("Authentication successful!")
                 st.rerun()
             except Exception as ex:
@@ -75,6 +80,7 @@ else:
     st.sidebar.info(f"Logged in as:\n{st.session_state.user.email}")
     if st.sidebar.button("Logout / Disconnect"):
         st.session_state.user = None
+        st.session_state.access_token = None
         st.rerun()
 
     st.title("📈 Enterprise Automation Dashboard")
@@ -85,8 +91,10 @@ else:
     with tab_view:
         st.subheader("Active Pipelines")
         try:
-            # Force inclusion of the current session's auth header
-            supabase.postgrest.auth(st.session_state.user.access_token)
+            # Safely bind token if present
+            if st.session_state.access_token:
+                supabase.postgrest.auth(st.session_state.access_token)
+                
             response = supabase.table("client_automation").select("*").execute()
             data = response.data
 
@@ -120,8 +128,9 @@ else:
                     st.write(" ") 
                     if st.button("Update Status", use_container_width=True):
                         try:
-                            # Attach auth header explicitly before making changes
-                            supabase.postgrest.auth(st.session_state.user.access_token)
+                            if st.session_state.access_token:
+                                supabase.postgrest.auth(st.session_state.access_token)
+                                
                             supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).eq("user_id", st.session_state.user.id).execute()
                             st.success(f"Pipeline updated to '{new_status}'!")
                             st.rerun()
@@ -145,7 +154,6 @@ else:
                     st.error("Client Name and Email are mandatory fields.")
                 else:
                     try:
-                        # Extract the true string representation of the active User ID
                         active_uid = str(st.session_state.user.id)
                         
                         payload = {
@@ -156,8 +164,9 @@ else:
                             "status": "Pending Actions"
                         }
                         
-                        # CRITICAL FIX: Explicitly bind the logged-in user's access token to the database connection headers
-                        supabase.postgrest.auth(st.session_state.user.access_token)
+                        # FIXED: Binds the correctly stored session token from local storage state
+                        if st.session_state.access_token:
+                            supabase.postgrest.auth(st.session_state.access_token)
                         
                         supabase.table("client_automation").insert(payload).execute()
                         st.success(f"Successfully deployed automation pipeline for {c_name}!")
