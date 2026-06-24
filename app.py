@@ -85,6 +85,8 @@ else:
     with tab_view:
         st.subheader("Active Pipelines")
         try:
+            # Force inclusion of the current session's auth header
+            supabase.postgrest.auth(st.session_state.user.access_token)
             response = supabase.table("client_automation").select("*").execute()
             data = response.data
 
@@ -118,7 +120,8 @@ else:
                     st.write(" ") 
                     if st.button("Update Status", use_container_width=True):
                         try:
-                            # Update statement cleanly satisfying specific UPDATE policies
+                            # Attach auth header explicitly before making changes
+                            supabase.postgrest.auth(st.session_state.user.access_token)
                             supabase.table("client_automation").update({"status": new_status}).eq("id", target_id).eq("user_id", st.session_state.user.id).execute()
                             st.success(f"Pipeline updated to '{new_status}'!")
                             st.rerun()
@@ -142,14 +145,20 @@ else:
                     st.error("Client Name and Email are mandatory fields.")
                 else:
                     try:
+                        # Extract the true string representation of the active User ID
+                        active_uid = str(st.session_state.user.id)
+                        
                         payload = {
-                            "user_id": str(st.session_state.user.id),
+                            "user_id": active_uid,
                             "client_name": c_name,
                             "client_email": c_email,
                             "raw_data": raw_notes,
                             "status": "Pending Actions"
                         }
-                        # FIXED: Added native returning option adjustment for API-driven inserts
+                        
+                        # CRITICAL FIX: Explicitly bind the logged-in user's access token to the database connection headers
+                        supabase.postgrest.auth(st.session_state.user.access_token)
+                        
                         supabase.table("client_automation").insert(payload).execute()
                         st.success(f"Successfully deployed automation pipeline for {c_name}!")
                         st.rerun()
