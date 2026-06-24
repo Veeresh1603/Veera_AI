@@ -13,26 +13,27 @@ except ImportError:
 # 1. Initialize Configuration and Global API Connections
 st.set_page_config(page_title="Enterprise Automation Hub", page_icon="📈", layout="wide")
 
-# Safe retrieval of environment secrets (Configured for free in Streamlit Cloud Dashboard)
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://your-fallback-url.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "your-fallback-anon-key")
-
-from supabase.lib.client_options import ClientOptions
+# Safe retrieval of environment secrets
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "").strip()
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "").strip()
 
 @st.cache_resource
-def init_supabase() -> Client:
-    # Explicitly clear internal path pollution for auth gateways
-    options = ClientOptions(
-        postgrest_client_timeout=10,
-        storage_client_timeout=10
-    )
-    return create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
+def init_supabase():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    try:
+        # Standard native initialization for supabase v2.x
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        st.error(f"Internal Connection Error: {str(e)}")
+        return None
 
-try:
-    supabase: Client = init_supabase()
-except Exception as e:
-    st.warning("Database parameters unconfigured. App running in Sandbox Mode.")
-    supabase = None
+supabase = init_supabase()
+
+# Check if database is connected globally
+if supabase is None:
+    st.error("🚨 Critical Error: Could not connect to the database. Please verify your Streamlit Secrets.")
+    st.stop()
 
 # Initialize local persistent UI states
 if "user" not in st.session_state:
@@ -65,7 +66,7 @@ if not st.session_state.user:
         if st.button("Create Free Account"):
             try:
                 res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
-                st.success("Account created! Please check your email for confirmation or sign in.")
+                st.success("Account created! Please check your email for confirmation link or sign in.")
             except Exception as ex:
                 st.error(f"Registration Failed: {str(ex)}")
 
@@ -73,7 +74,6 @@ if not st.session_state.user:
 # INTERFACE ROUTING: MAIN AUTOMATION DASHBOARD
 # =====================================================================
 else:
-    # Sidebar Navigation & Session Stats
     st.sidebar.title("🤖 Automation Control")
     st.sidebar.info(f"Logged in as:\n{st.session_state.user.email}")
     if st.sidebar.button("Logout / Disconnect"):
@@ -83,13 +83,11 @@ else:
     st.title("📈 Enterprise Automation Dashboard")
     st.write("Manage client operations and background workflow automations efficiently.")
 
-    # Application Layout Tabs
     tab_view, tab_add = st.tabs(["View Automations", "🚀 Trigger New Automation"])
 
     with tab_view:
         st.subheader("Active Pipelines")
         try:
-            # Query backend - Row Level Security naturally filters data for the active user
             response = supabase.table("client_automation").select("*").execute()
             data = response.data
 
@@ -97,7 +95,6 @@ else:
                 st.info("No active automations found. Head over to the trigger tab to start one!")
             else:
                 df = pd.DataFrame(data)
-                # Format visual outputs cleanly
                 df = df.rename(columns={
                     "client_name": "Client Name",
                     "client_email": "Client Email",
