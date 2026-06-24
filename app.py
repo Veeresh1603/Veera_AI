@@ -1,0 +1,128 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import io
+
+# Securely attempt to import the Supabase backend framework
+try:
+    from supabase import create_client, Client
+except ImportError:
+    st.error("Missing architecture packages. Please run: pip install supabase")
+    st.stop()
+
+# 1. Initialize Configuration and Global API Connections
+st.set_page_config(page_title="Enterprise Automation Hub", page_icon="📈", layout="wide")
+
+# Safe retrieval of environment secrets (Configured for free in Streamlit Cloud Dashboard)
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://your-fallback-url.supabase.co")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "your-fallback-anon-key")
+
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+try:
+    supabase: Client = init_supabase()
+except Exception as e:
+    st.warning("Database parameters unconfigured. App running in Sandbox Mode.")
+    supabase = None
+
+# Initialize local persistent UI states
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# =====================================================================
+# INTERFACE ROUTING: AUTHENTICATION GATEWAY
+# =====================================================================
+if not st.session_state.user:
+    st.title("🔒 Enterprise Automation Hub — Secure Portal")
+    st.write("Login or create an account instantly to access your isolated automation dashboard.")
+    
+    auth_tab1, auth_tab2 = st.tabs(["Sign In", "Register New Account"])
+    
+    with auth_tab1:
+        login_email = st.text_input("Account Email", key="login_em")
+        login_password = st.text_input("Password", type="password", key="login_pwd")
+        if st.button("Access Dashboard"):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": login_email, "password": login_password})
+                st.session_state.user = res.user
+                st.success("Authentication successful!")
+                st.rerun()
+            except Exception as ex:
+                st.error(f"Authentication Failed: {str(ex)}")
+                
+    with auth_tab2:
+        reg_email = st.text_input("Email Address", key="reg_em")
+        reg_password = st.text_input("Secure Password", type="password", key="reg_pwd")
+        if st.button("Create Free Account"):
+            try:
+                res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
+                st.success("Account created! Please check your email for confirmation or sign in.")
+            except Exception as ex:
+                st.error(f"Registration Failed: {str(ex)}")
+
+# =====================================================================
+# INTERFACE ROUTING: MAIN AUTOMATION DASHBOARD
+# =====================================================================
+else:
+    # Sidebar Navigation & Session Stats
+    st.sidebar.title("🤖 Automation Control")
+    st.sidebar.info(f"Logged in as:\n{st.session_state.user.email}")
+    if st.sidebar.button("Logout / Disconnect"):
+        st.session_state.user = None
+        st.rerun()
+
+    st.title("📈 Enterprise Automation Dashboard")
+    st.write("Manage client operations and background workflow automations efficiently.")
+
+    # Application Layout Tabs
+    tab_view, tab_add = st.tabs(["View Automations", "🚀 Trigger New Automation"])
+
+    with tab_view:
+        st.subheader("Active Pipelines")
+        try:
+            # Query backend - Row Level Security naturally filters data for the active user
+            response = supabase.table("client_automation").select("*").execute()
+            data = response.data
+
+            if len(data) == 0:
+                st.info("No active automations found. Head over to the trigger tab to start one!")
+            else:
+                df = pd.DataFrame(data)
+                # Format visual outputs cleanly
+                df = df.rename(columns={
+                    "client_name": "Client Name",
+                    "client_email": "Client Email",
+                    "status": "Pipeline Status",
+                    "created_at": "Triggered At"
+                })
+                st.dataframe(df[["id", "Client Name", "Client Email", "Pipeline Status", "Triggered At"]], use_container_width=True)
+        except Exception as e:
+            st.error(f"Failed to fetch real-time pipelines: {str(e)}")
+
+    with tab_add:
+        st.subheader("Configure New Operations Client")
+        with st.form("automation_form", clear_on_submit=True):
+            c_name = st.text_input("Client Full Name")
+            c_email = st.text_input("Client Contact Email")
+            raw_notes = st.text_area("Automation Scope / Raw Metadata")
+            
+            submit_btn = st.form_submit_with_button("Inject into Pipeline")
+            
+            if submit_btn:
+                if not c_name or not c_email:
+                    st.error("Client Name and Email are mandatory fields.")
+                else:
+                    try:
+                        payload = {
+                            "user_id": st.session_state.user.id,
+                            "client_name": c_name,
+                            "client_email": c_email,
+                            "raw_data": raw_notes,
+                            "status": "Pending Actions"
+                        }
+                        supabase.table("client_automation").insert(payload).execute()
+                        st.success(f"Successfully deployed automation pipeline for {c_name}!")
+                    except Exception as e:
+                        st.error(f"Database insertion failed: {str(e)}")
