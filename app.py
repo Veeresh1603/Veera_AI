@@ -17,9 +17,16 @@ st.set_page_config(page_title="Enterprise Automation Hub", page_icon="📈", lay
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://your-fallback-url.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "your-fallback-anon-key")
 
+from supabase.lib.client_options import ClientOptions
+
 @st.cache_resource
 def init_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Explicitly clear internal path pollution for auth gateways
+    options = ClientOptions(
+        postgrest_client_timeout=10,
+        storage_client_timeout=10
+    )
+    return create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
 
 try:
     supabase: Client = init_supabase()
