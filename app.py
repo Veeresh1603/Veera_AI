@@ -63,6 +63,9 @@ if not st.session_state.user:
     with auth_tab2:
         reg_email = st.text_input("Email Address", key="reg_em")
         reg_password = st.text_input("Secure Password", type="password", key="reg_pwd")
+        if f"submit_reg" not in st.session_state:
+            st.session_state.submit_reg = False
+            
         if st.button("Create Free Account"):
             try:
                 res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
@@ -112,7 +115,8 @@ else:
             c_email = st.text_input("Client Contact Email")
             raw_notes = st.text_area("Automation Scope / Raw Metadata")
             
-            submit_btn = st.form_submit_with_button("Inject into Pipeline")
+            # FIXED: Changed from form_submit_with_button to form_submit_button
+            submit_btn = st.form_submit_button("Inject into Pipeline")
             
             if submit_btn:
                 if not c_name or not c_email:
@@ -128,5 +132,6 @@ else:
                         }
                         supabase.table("client_automation").insert(payload).execute()
                         st.success(f"Successfully deployed automation pipeline for {c_name}!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Database insertion failed: {str(e)}")
